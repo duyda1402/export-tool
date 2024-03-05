@@ -18,8 +18,8 @@ import {
   Checkbox,
   Center,
 } from '@mantine/core'
-import { Dropzone, MIME_TYPES } from '@mantine/dropzone'
-import { IconCloudUpload, IconX, IconDownload, IconFile, IconSearch } from '@tabler/icons-react'
+import { Dropzone } from '@mantine/dropzone'
+import { IconCloudUpload, IconX, IconDownload, IconFile, IconSearch, IconCheck } from '@tabler/icons-react'
 
 const useStyles = createStyles((_theme) => ({
   wrapper: {
@@ -46,6 +46,7 @@ const useStyles = createStyles((_theme) => ({
 }))
 
 const FIRST_ACTIVE = 0
+const END_ACTIVE = 3
 
 type EntityData = {
   pickLists: Array<string>
@@ -60,6 +61,10 @@ type EntityData = {
   profiles: Array<string>
 }
 type EntityType = keyof EntityData
+type DataFile = Array<{
+  entityType: EntityType
+  data: any
+}>
 
 const TABS: Array<{ label: string; entityType: EntityType }> = [
   {
@@ -93,30 +98,33 @@ const TABS: Array<{ label: string; entityType: EntityType }> = [
   },
 ]
 
+const INIT_DATA = {
+  pickLists: [],
+  objects: [],
+  actionMeta: [],
+  flows: [],
+  layouts: [],
+  applications: [],
+  appsLayouts: [],
+  objectsLayouts: [],
+  flowObjects: [],
+  profiles: [],
+}
+
 function App() {
   const { classes } = useStyles()
   const theme = useMantineTheme()
   const [active, setActive] = useState(0)
   const [loading, setLoading] = useState(false)
-
+  const [messageError, setMessageError] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const nextStep = () => setActive((current) => (current < 3 ? current + 1 : current))
   const prevStep = () => setActive((current) => (current > 0 ? current - 1 : current))
 
   const openRef = useRef<() => void>(null)
-  const [data, setData] = useState<any[]>([])
-  const [entityData, setEntityData] = useState<EntityData>({
-    pickLists: [],
-    objects: [],
-    actionMeta: [],
-    flows: [],
-    layouts: [],
-    applications: [],
-    appsLayouts: [],
-    objectsLayouts: [],
-    flowObjects: [],
-    profiles: [],
-  })
+  const [data, setData] = useState<DataFile>([])
+  const [entityData, setEntityData] = useState<EntityData>(INIT_DATA)
+
   const handlerClearFile = () => {
     setFile(null)
     openRef.current?.()
@@ -136,12 +144,47 @@ function App() {
             return JSON.parse(`${line.trim().replace(`\r`, ``)}`)
           })
         setData(lines)
-        console.log(lines)
+        setMessageError('')
       } catch (error) {
-        console.log(error)
+        setMessageError('File not supported!')
       }
     }
     reader.readAsText(file)
+  }
+
+  const handleConvertFile = (nameFile: string, data: string) => {
+    const blob = new Blob([data], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.download = nameFile
+    link.href = url
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handlerDownloadFileConvert = async () => {
+    const resultObject: string[] = []
+    setLoading(() => true)
+    const dataConvert = {
+      ...entityData,
+      objectDetail: entityData.objects,
+      flowDetail: entityData.flows,
+    }
+    data.forEach((line) => {
+      const arr = dataConvert[`${line?.entityType}`] || dataConvert[`${line?.entityType}`]
+      if (arr?.includes(line.data.name)) {
+        resultObject.push(JSON.stringify(line))
+      }
+    })
+    const outputName = `Convert_${file ? file.name : 'unknown.txt'}`
+    handleConvertFile(outputName, resultObject.join('\n'))
+    setLoading(() => false)
+  }
+
+  const handlerDone = () => {
+    handlerClearFile()
+    setEntityData(INIT_DATA)
+    setActive(FIRST_ACTIVE)
   }
 
   const handlerSelectEntity = (checked: boolean, entityType: EntityType, name: string) => {
@@ -161,9 +204,14 @@ function App() {
   return (
     <Container>
       <Stack>
-        <Stepper active={active} onStepClick={setActive} breakpoint="sm">
+        <Stepper active={active} breakpoint="sm">
           <Stepper.Step label="First step" description="Upload File">
-            <>
+            <Stack>
+              {messageError && (
+                <Text fz="sm" color="red">
+                  ERROR: {messageError}
+                </Text>
+              )}
               {file ? (
                 <Group
                   pos="relative"
@@ -182,9 +230,9 @@ function App() {
                   <ActionIcon
                     pos="absolute"
                     color="red"
-                    size="sm"
-                    variant="transparent"
-                    right={-30}
+                    size="md"
+                    variant="light"
+                    right={-50}
                     onClick={handlerClearFile}
                   >
                     <IconX stroke={2} />
@@ -238,7 +286,7 @@ function App() {
                   </Button>
                 </div>
               )}
-            </>
+            </Stack>
           </Stepper.Step>
           <Stepper.Step label="Second step" description="Select Items">
             <Tabs defaultValue="applications">
@@ -263,19 +311,60 @@ function App() {
               ))}
             </Tabs>
           </Stepper.Step>
-          <Stepper.Step label="Final step" description="Get full access">
-            Step 3 content: Get full access
+          <Stepper.Step label="Final step" description="Convert">
+            {file && (
+              <Group
+                pos="relative"
+                align="center"
+                spacing="xs"
+                mt="md"
+                bg="cyan"
+                px="sm"
+                py="xs"
+                sx={{ cursor: 'pointer' }}
+              >
+                <IconFile size={rem(26)} color="white" stroke={2} />
+                <Text color="white" fw={500}>
+                  {`Convert_${file.name}`}
+                </Text>
+                <ActionIcon
+                  pos="absolute"
+                  color="cyan"
+                  size="md"
+                  variant="light"
+                  right={-50}
+                  onClick={handlerDownloadFileConvert}
+                >
+                  <IconDownload stroke={2} />
+                </ActionIcon>
+              </Group>
+            )}
           </Stepper.Step>
-          <Stepper.Completed>Completed, click back button to get to previous step</Stepper.Completed>
+          <Stepper.Completed>
+            <Center h={160}>
+              <Group>
+                <IconCheck color="green" />
+                <Text color="gray.8">Completed, click back button to get to previous step</Text>
+              </Group>
+            </Center>
+          </Stepper.Completed>
         </Stepper>
 
         <Group position="right" mt="xl">
-          <Button variant="default" onClick={prevStep} disabled={active === FIRST_ACTIVE}>
-            Back
-          </Button>
-          <Button onClick={nextStep} disabled={!file}>
-            Next step
-          </Button>
+          {active !== END_ACTIVE ? (
+            <>
+              <Button variant="default" onClick={prevStep} disabled={active === FIRST_ACTIVE}>
+                Back
+              </Button>
+              <Button onClick={nextStep} disabled={!file || !!messageError}>
+                Next step
+              </Button>
+            </>
+          ) : (
+            <Button onClick={handlerDone} disabled={!file}>
+              Done
+            </Button>
+          )}
         </Group>
       </Stack>
     </Container>
